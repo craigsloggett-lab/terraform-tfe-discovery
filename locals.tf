@@ -46,11 +46,12 @@ locals {
   }
 
   # Expand each variable set into a variable set and project pair.
-  variable_set_project_pairs = flatten([
+  project_variable_set_pairs = flatten([
     for variable_set_id, variable_set in local.variable_sets : [
       for project_id in variable_set.project_ids : {
-        variable_set_id = variable_set_id
-        project_id      = project_id
+        variable_set_name = variable_set.name
+        variable_set_id   = variable_set_id
+        project_id        = project_id
       }
     ]
   ])
@@ -58,7 +59,7 @@ locals {
   # Create a map of variable set and project pairs to align with
   # the `tfe_project_variable_set` resource.
   project_variable_sets = {
-    for pair in local.variable_set_project_pairs :
+    for pair in local.project_variable_set_pairs :
     "${pair.variable_set_id}_${pair.project_id}" => pair
   }
 }
