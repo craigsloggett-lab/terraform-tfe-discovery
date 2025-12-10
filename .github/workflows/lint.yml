@@ -34,7 +34,7 @@ jobs:
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
 
       - name: Lint Terraform Configuration
-        uses: craigsloggett/lint-terraform@1da07520828743a30e4775a40b80576046c6d929 # v1.0.0
+        uses: craigsloggett/lint-terraform@18fb98efc094b1a79b51795ca3cad8d0d9701a28 # v1.0.3
 
   terraform-docs:
     name: Terraform Docs
