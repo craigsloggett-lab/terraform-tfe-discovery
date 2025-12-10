@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     branches:
-    - main
+      - main
 
 permissions:
   contents: write
@@ -12,15 +12,21 @@ permissions:
 
 jobs:
   release:
-    name: GitHub
-    uses: craigsloggett-lab/.github/.github/workflows/release-terraform.yml@main
-  publish:
-    name: HCP Terraform
-    needs: release
-    if: needs.release.outputs.new-release-published == 'true'
-    uses: craigsloggett-lab/.github/.github/workflows/publish-terraform.yml@main
-    with:
-      new-release-version: ${{ needs.release.outputs.new-release-version }}
-      hcp-terraform-organization-name: craigsloggett-lab
-    secrets:
-      hcp-terraform-api-token: ${{ secrets.TF_TOKEN_app_terraform_io }}
+    name: Release
+    runs-on: ubuntu-24.04
+    outputs:
+      new-release-published: ${{ steps.release.outputs.new_release_published }}
+      new-release-version: ${{ steps.release.outputs.new_release_version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - name: Release
+        id: release
+        uses: cycjimmy/semantic-release-action@b12c8f6015dc215fe37bc154d4ad456dd3833c90 # v6.0.0
+        with:
+          semantic_version: 25.0.2
+          extra_plugins: |
+            @semantic-release/git@10.0.1
+            conventional-changelog-conventionalcommits@9.1.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
