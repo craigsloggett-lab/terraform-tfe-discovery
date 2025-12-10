@@ -1,16 +1,43 @@
 # HCP Terraform and Terraform Enterprise Discovery
 
-A Terraform module to easily discover resources in an HCP Terraform or TFE organization.
+A Terraform module to easily discover resources in an HCP Terraform or Terraform Enterprise organization.
 
-The outputs of the module expose the necessary `id` values to be used in `import` blocks by the consuming root module. Each output is named after the `tfe` provider resource it is discovering and they are generally maps with the name of the resource as the `key` and an `id` or other relevant data as the values.
+The outputs of the module expose the necessary `id` values to be used in `import` blocks by the consuming root module. Each output is named after the [HCP Terraform and Terraform Enterprise Provider](https://registry.terraform.io/providers/hashicorp/tfe/latest/docs) resource  it is discovering.
 
-The value this module provides is discovering and gathering all of the resources configured in HCP Terraform and exposing the relevant `id`s needed to bring them under management with `import`.
+For example, the [tfe_organization](https://registry.terraform.io/modules/craigsloggett/discovery/tfe/latest?tab=outputs) output would contain details about the [tfe_organization](https://registry.terraform.io/providers/hashicorp/tfe/latest/docs/resources/organization) resource.
 
-This is similar in concept to the `query` functionality introduced in recent versions of `terraform` however, it doesn't require the `tfe` provider to be updated with `list` resources for every resource and will work with older Terraform versions (`v1.5.0` and later if the consumer uses `import` blocks).
+This module provides a way to discover existing configuration and expose the relevant details needed to bring them under management with Terraform's `import` command.
 
-Long term, the aim is to implement resource discovery using list blocks as the feature and provider matures, giving users the ability to both discover unmanaged resources and generate the code to manage them.
+This is similar in concept to the `query` functionality introduced in recent versions of Terraform with the added benefit that the module does not require the provider to be updated to include `list` resources. Additionally, this module is backwards compatible with older Terraform versions that did not have these features yet.
+
+Long term, the goal for this module will be to include `list` blocks as the feature and provider matures, giving users the ability to both discover unmanaged resources and generate the code to manage them with a single module.
 
 If you haven't setup an HCP Terraform organization yet, the [Manual Onboarding Setup](#Manual-Onboarding-Setup) section below walks you through the steps to get started.
+
+## How It Works
+
+In order to "discover" resources in a Terraform organization, this module uses data sources from the [tfe](https://registry.terraform.io/providers/hashicorp/tfe) and [external](https://registry.terraform.io/providers/hashicorp/external) providers. It expects a [Team API Token](https://developer.hashicorp.com/terraform/cloud-docs/users-teams-organizations/api-tokens#team-api-tokens) for the [owners team](https://developer.hashicorp.com/terraform/cloud-docs/users-teams-organizations/teams#the-owners-team) to be available as the `TFE_TOKEN` environment variable in the Terraform [run environment](https://developer.hashicorp.com/terraform/cloud-docs/workspaces/run/run-environment).
+
+The resulting data source attributes are then restructured using `locals` and presented as outputs in a structure that aligns resource type names to the discovered resources of that type.
+
+### Example
+
+The resource type `tfe_team` is provided as an output containing a map of teams that have been configured.
+
+```hcl
+
+output "tfe_team" {
+  value = {
+    owners = {
+      id                          = data.tfe_team.owners.id
+      organization_membership_ids = local.owners_team_organization_membership_ids
+    }
+  }
+  description = "A map of the HCP Terraform teams with their 'id' as the only key. Only includes the 'owners' team."
+}
+```
+
+The ID of the owners team can then be easily be accessed using the module: `module.discovery.tfe_team.owners.id`. The members of the team are also grouped in the same output to provide a logical hierarchy of entities (a member belongs to a team).
 
 <!-- BEGIN_TF_DOCS -->
 ## Usage
