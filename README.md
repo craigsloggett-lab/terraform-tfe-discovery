@@ -12,83 +12,6 @@ This is similar in concept to the `query` functionality introduced in recent ver
 
 Long term, the goal for this module will be to include `list` blocks as the feature and provider matures, giving users the ability to both discover unmanaged resources and generate the code to manage them with a single module.
 
-If you haven't setup an HCP Terraform organization yet, the [Manual Onboarding Setup](#Manual-Onboarding-Setup) section below walks you through the steps to get started.
-
-## How It Works
-
-In order to "discover" resources in a Terraform organization, this module uses data sources from the [tfe](https://registry.terraform.io/providers/hashicorp/tfe) and [external](https://registry.terraform.io/providers/hashicorp/external) providers. It expects a [Team API Token](https://developer.hashicorp.com/terraform/cloud-docs/users-teams-organizations/api-tokens#team-api-tokens) for the [owners team](https://developer.hashicorp.com/terraform/cloud-docs/users-teams-organizations/teams#the-owners-team) to be available as the `TFE_TOKEN` environment variable in the Terraform [run environment](https://developer.hashicorp.com/terraform/cloud-docs/workspaces/run/run-environment).
-
-The resulting data source attributes are then restructured using `locals` and presented as outputs in a structure that aligns resource type names to the discovered resources of that type.
-
-### Example
-
-The resource type `tfe_variable_set` is provided as an output containing a map of variable sets that have been configured.
-
-```hcl
-
-output "tfe_variable_set" {
-  value       = local.variable_sets
-  description = "A map of variable sets and their details as configured in the HCP Terraform organization."
-}
-
-locals {
-  # The output of the `external` data source is a jsonencoded string so
-  # this local variable does the jsondecode in one spot and converts it
-  # to a "set" for convenience when used with "for_each".
-  variable_set_names = toset(jsondecode(data.external.variable_set_names.result.names))
-
-  # The `tfe_variable_set` data source includes the variable IDs, but
-  # not any details about the variables.
-  variable_sets_without_variables = {
-    for name in local.variable_set_names :
-    data.tfe_variable_set.this[name].id => data.tfe_variable_set.this[name]
-  }
-
-  # The `tfe_variable` data source contains a lot of duplicate data so
-  # this will clean it up and prepare it to be merged into the relevant
-  # variable set map that is output by this module.
-  variable_set_variables = {
-    for name, variable_set in data.tfe_variables.this :
-    variable_set.variable_set_id => {
-      for variable in variable_set.variables :
-      variable.id => variable
-    }
-  }
-
-  # Merge the variable set data with the variable data associated with
-  # each variable set, giving a convenient place to import variable sets
-  # and their relevant variables.
-  variable_sets = {
-    for id, variable_set in local.variable_sets_without_variables :
-    id => merge(
-      variable_set,
-      {
-        variables = try(local.variable_set_variables[id], {})
-      }
-    )
-  }
-}
-```
-
-The variable sets can then be easily be accessed using the module: `module.discovery.tfe_variable_set`. The variables configured in the variable sets are also grouped in the same output to provide a logical hierarchy of entities (a variable belongs to a variable set). This makes importing the resources straightforward:
-
-```hcl
-import {
-  for_each = module.discovery.tfe_variable_set
-
-  id = each.key
-  to = tfe_variable_set.this[each.key]
-}
-
-resource "tfe_variable_set" "this" {
-  for_each = module.discovery.tfe_variable_set
-
-  name         = each.value.name
-  description  = each.value.description
-  organization = tfe_organization.this.name
-}
-```
-
 <!-- BEGIN_TF_DOCS -->
 ## Usage
 
@@ -235,88 +158,77 @@ No inputs.
 | <a name="output_tfe_workspace"></a> [tfe\_workspace](#output\_tfe\_workspace) | A map of workspaces and their details as configured in the HCP Terraform organization. |
 <!-- END_TF_DOCS -->
 
-## Manual Onboarding Setup
+## How It Works
 
-The following steps can be used as a guide when onboarding a new repository.
+In order to "discover" resources in a Terraform organization, this module uses data sources from the [tfe](https://registry.terraform.io/providers/hashicorp/tfe) and [external](https://registry.terraform.io/providers/hashicorp/external) providers. It expects a [Team API Token](https://developer.hashicorp.com/terraform/cloud-docs/users-teams-organizations/api-tokens#team-api-tokens) for the [owners team](https://developer.hashicorp.com/terraform/cloud-docs/users-teams-organizations/teams#the-owners-team) to be available as the `TFE_TOKEN` environment variable in the Terraform [run environment](https://developer.hashicorp.com/terraform/cloud-docs/workspaces/run/run-environment).
 
-### HashiCorp Cloud Platform
+The resulting data source attributes are then restructured using `locals` and presented as outputs in a structure that aligns resource type names to the discovered resources of that type.
 
-1. Create an HCP account.
-2. Create an HCP organization.
-3. Create an HCP project.
+### Example
 
-### HCP Terraform
+The resource type `tfe_variable_set` is provided as an output containing a map of variable sets that have been configured.
 
-1. Create an HCP Terraform organization.
-2. Run `terraform login` to generate a user API token.
-3. Update `backend.tf` to use your HCP Terraform organization.
-4. Run `terraform init` to create the backend workspace and project.
-5. Manually generate a team API token for the "owners" team.
-6. Manually create a variable set for the purpose of authenticating the TFE provider.
-7. Populate the variable set with the `TFE_TOKEN` environment variable, using the API token as the (sensitive) value.
-8. Assign the variable set to the backend workspace (or project).
+```hcl
 
-#### VCS Integration with GitHub
+output "tfe_variable_set" {
+  value       = local.variable_sets
+  description = "A map of variable sets and their details as configured in the HCP Terraform organization."
+}
 
-In order to scope the list of repositories shown to users when creating a VCS backed workspace,
-it is necessary to either create and install an OAuth App in your GitHub organization or use a
-fine-grained personal access token attached to a service account. Using a service account is
-not strictly required but is recommended in order to ensure _only_ repositories for an
-organization are listed -- and not those belonging to a user.
+locals {
+  # The output of the `external` data source is a jsonencoded string so
+  # this local variable does the jsondecode in one spot and converts it
+  # to a "set" for convenience when used with "for_each".
+  variable_set_names = toset(jsondecode(data.external.variable_set_names.result.names))
 
-This steers away from the standard advice of using the pre-installed GitHub App that comes with
-HCP Terraform. The reason for this is because of the lack of control for the user experience
-as mentioned.
+  # The `tfe_variable_set` data source includes the variable IDs, but
+  # not any details about the variables.
+  variable_sets_without_variables = {
+    for name in local.variable_set_names :
+    data.tfe_variable_set.this[name].id => data.tfe_variable_set.this[name]
+  }
 
-The following documents what is needed to setup an OAuth App in your GitHub Organization.
+  # The `tfe_variable` data source contains a lot of duplicate data so
+  # this will clean it up and prepare it to be merged into the relevant
+  # variable set map that is output by this module.
+  variable_set_variables = {
+    for name, variable_set in data.tfe_variables.this :
+    variable_set.variable_set_id => {
+      for variable in variable_set.variables :
+      variable.id => variable
+    }
+  }
 
-##### Creating a GitHub Service Account
+  # Merge the variable set data with the variable data associated with
+  # each variable set, giving a convenient place to import variable sets
+  # and their relevant variables.
+  variable_sets = {
+    for id, variable_set in local.variable_sets_without_variables :
+    id => merge(
+      variable_set,
+      {
+        variables = try(local.variable_set_variables[id], {})
+      }
+    )
+  }
+}
+```
 
-Create a GitHub service account by navigating to https://github.com/signup and creating a new
-user with a unique email and username. This user is like any other human user, but will be
-configured with a private profile and own no repositories.
+The variable sets can then be easily be accessed using the module: `module.discovery.tfe_variable_set`. The variables configured in the variable sets are also grouped in the same output to provide a logical hierarchy of entities (a variable belongs to a variable set). This makes importing the resources straightforward:
 
-When providing permissions for anything accessing the GitHub organization, the following are
-required for HCP Terraform's VCS Provider:
+```hcl
+import {
+  for_each = module.discovery.tfe_variable_set
 
-- Commit statuses: Read and write
-- Contents: Read-only
-- Metadata: Read-only
-- Webhooks: Read and write
+  id = each.key
+  to = tfe_variable_set.this[each.key]
+}
 
-##### Add the Service Account to the GitHub Organization
+resource "tfe_variable_set" "this" {
+  for_each = module.discovery.tfe_variable_set
 
-Once created, add the service account as a member of the GitHub organization being integrated
-with HCP Terraform.
-
-##### Create an OAuth App in the GitHub Organization
-
-Navigate to GitHub organization settings -> Developer settings -> OAuth Apps to create a new
-OAuth App for the _organization_ (not an individual user).
-
-The Application name, Homepage URL, and Authorization callback URL fields will be populated
-with information found in HCP Terraform. Device flow can be enabled if desired, but does
-not affect the process either way.
-
-Pause here and open a new window/tab with the HCP Terraform organization open and logged in
-as a user with access to add a VCS Provider.
-
-###### Add a VCS Provider
-
-Navigate to HCP Terraform organization settings -> Version Control -> Providers to Add a VCS provider.
-Select GitHub -> GitHub.com (Custom) to display the information needed to populate the OAuth application
-registration form.
-
-Back in GitHub, within the OAuth App registration window/tab, copy the Application name, Homepage URL,
-and Authorization callback URL into the relevant fields in the OAuth App configuration.
-
-Click Register application and copy the Client ID into the Add VCS Provider window in HCP Terraform and
-give the VCS Provider the same name as the GitHub organization being configured.
-
-Finally, in the OAuth App, Generate a new client secret, and copy the secret into the Add VCS Provider
-window in HCP Terraform.
-
-Click Connect and continue to begin the authorization workflow between HCP Terraform and GitHub. At this
-point it is important to be logged into GitHub using your _service account_ created earlier, not your
-user account. It is important to note that the email used for the GitHub _service account_ does not need
-to be a member of the HCP Terraform organization.
+  name         = each.value.name
+  description  = each.value.description
+  organization = tfe_organization.this.name
+}
+```
